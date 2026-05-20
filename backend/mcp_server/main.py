@@ -12,6 +12,7 @@ from typing import Any
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 
+from app.agents.config import get_agent_settings
 from app.core.database import async_session_maker
 from mcp_server import tools as _tools_pkg  # noqa: F401  triggers tool registration
 from mcp_server.auth import verify_request
@@ -45,17 +46,53 @@ async def health():
     return {"status": "ok", "tools": len(REGISTRY)}
 
 
+@app.get("/.well-known/oauth-protected-resource")
+async def oauth_protected_resource():
+    """OAuth 2.1 protected-resource metadata for MCP clients.
+
+    Per the MCP Authorization spec, clients fetch this to discover which
+    authorization server to use. Only meaningful when running under the
+    `workos` auth provider — otherwise the in-process agent runtime is
+    the only caller and discovery is moot.
+    """
+    s = get_agent_settings()
+    if (s.mcp_auth_provider or "internal").lower() != "workos":
+        return JSONResponse(
+            status_code=404,
+            content={"error": "discovery only available when AGENTS_MCP_AUTH_PROVIDER=workos"},
+        )
+    doc: dict[str, Any] = {
+        "resource": s.mcp_public_url or "",
+        "authorization_servers": [s.workos_issuer] if s.workos_issuer else [],
+        "bearer_methods_supported": ["header"],
+        "scopes_supported": ["openid", "email", "profile"],
+    }
+    return JSONResponse(content=doc)
+
+
 @app.post("/mcp")
 async def mcp(request: Request) -> JSONResponse:
     # Auth first — never accept unauthenticated calls.
     try:
-        ctx = verify_request(request)
+        ctx = await verify_request(request)
     except Exception as exc:  # HTTPException from verify_request
         status_code = getattr(exc, "status_code", 401)
         detail = getattr(exc, "detail", str(exc))
+        headers: dict[str, str] = {}
+        # MCP spec: a 401 from a protected resource MUST carry a
+        # WWW-Authenticate pointing at its protected-resource metadata so
+        # clients can auto-discover the auth server.
+        if status_code == 401:
+            s = get_agent_settings()
+            if s.mcp_public_url:
+                meta = f"{s.mcp_public_url.rstrip('/')}/.well-known/oauth-protected-resource"
+                headers["WWW-Authenticate"] = f'Bearer resource_metadata="{meta}"'
+            else:
+                headers["WWW-Authenticate"] = "Bearer"
         return JSONResponse(
             status_code=status_code,
             content={"jsonrpc": "2.0", "id": None, "error": {"code": -32001, "message": str(detail)}},
+            headers=headers,
         )
 
     try:

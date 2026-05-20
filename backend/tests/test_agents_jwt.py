@@ -16,7 +16,8 @@ from app.agents.config import get_agent_settings
 from app.agents.mcp.auth import JWT_ALGO, JWT_AUDIENCE, JWT_ISSUER, mint_token
 
 
-def test_mint_then_verify_roundtrip():
+@pytest.mark.asyncio
+async def test_mint_then_verify_roundtrip():
     from mcp_server.auth import verify_request
 
     user_id = uuid.uuid4()
@@ -28,13 +29,14 @@ def test_mint_then_verify_roundtrip():
     class _Req:
         headers = {"authorization": f"Bearer {token}"}
 
-    ctx = verify_request(_Req())  # type: ignore[arg-type]
+    ctx = await verify_request(_Req())  # type: ignore[arg-type]
     assert ctx.user_id == user_id
     assert ctx.conversation_id == conv_id
     assert ctx.agent_id == agent_id
 
 
-def test_missing_authorization_rejected():
+@pytest.mark.asyncio
+async def test_missing_authorization_rejected():
     from fastapi import HTTPException
     from mcp_server.auth import verify_request
 
@@ -42,11 +44,12 @@ def test_missing_authorization_rejected():
         headers: dict[str, str] = {}
 
     with pytest.raises(HTTPException) as exc:
-        verify_request(_Req())  # type: ignore[arg-type]
+        await verify_request(_Req())  # type: ignore[arg-type]
     assert exc.value.status_code == 401
 
 
-def test_wrong_secret_rejected():
+@pytest.mark.asyncio
+async def test_wrong_secret_rejected():
     from fastapi import HTTPException
     from mcp_server.auth import verify_request
 
@@ -67,11 +70,12 @@ def test_wrong_secret_rejected():
         headers = {"authorization": f"Bearer {bogus}"}
 
     with pytest.raises(HTTPException) as exc:
-        verify_request(_Req())  # type: ignore[arg-type]
+        await verify_request(_Req())  # type: ignore[arg-type]
     assert exc.value.status_code == 401
 
 
-def test_expired_token_rejected():
+@pytest.mark.asyncio
+async def test_expired_token_rejected():
     from fastapi import HTTPException
     from mcp_server.auth import verify_request
 
@@ -93,11 +97,12 @@ def test_expired_token_rejected():
         headers = {"authorization": f"Bearer {expired}"}
 
     with pytest.raises(HTTPException) as exc:
-        verify_request(_Req())  # type: ignore[arg-type]
+        await verify_request(_Req())  # type: ignore[arg-type]
     assert exc.value.status_code == 401
 
 
-def test_short_ttl_respected():
+@pytest.mark.asyncio
+async def test_short_ttl_respected():
     """Mint with ttl_seconds=1, sleep 2, verify rejection."""
     from fastapi import HTTPException
     from mcp_server.auth import verify_request
@@ -109,10 +114,11 @@ def test_short_ttl_respected():
         headers = {"authorization": f"Bearer {token}"}
 
     with pytest.raises(HTTPException):
-        verify_request(_Req())  # type: ignore[arg-type]
+        await verify_request(_Req())  # type: ignore[arg-type]
 
 
-def test_optional_conv_id_is_truly_optional():
+@pytest.mark.asyncio
+async def test_optional_conv_id_is_truly_optional():
     from mcp_server.auth import verify_request
 
     token = mint_token(user_id=uuid.uuid4())
@@ -120,6 +126,6 @@ def test_optional_conv_id_is_truly_optional():
     class _Req:
         headers = {"authorization": f"Bearer {token}"}
 
-    ctx = verify_request(_Req())  # type: ignore[arg-type]
+    ctx = await verify_request(_Req())  # type: ignore[arg-type]
     assert ctx.conversation_id is None
     assert ctx.agent_id is None

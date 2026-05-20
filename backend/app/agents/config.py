@@ -20,6 +20,27 @@ class AgentSettings(BaseSettings):
     mcp_jwt_secret: str = "change-me-in-production"
     mcp_jwt_ttl_seconds: int = 600
 
+    # Which provider validates MCP bearer tokens. "internal" accepts the
+    # HS256 tokens minted by the in-process agent runtime (keeps the
+    # built-in AI Agents working). "workos" validates tokens issued by
+    # WorkOS AuthKit via JWKS — required for external clients like Claude
+    # to authenticate over OAuth 2.1.
+    mcp_auth_provider: str = "internal"
+
+    # WorkOS AuthKit settings. Only consulted when mcp_auth_provider is
+    # "workos". The issuer is your AuthKit domain (e.g.
+    # https://<subdomain>.authkit.app). The JWKS URL is published at
+    # `${issuer}/oauth2/jwks` for AuthKit-issued tokens.
+    workos_issuer: str = ""
+    workos_jwks_url: str = ""
+    workos_audience: str = ""
+
+    # Public URL where the MCP server is reachable from outside the
+    # Docker network. Returned as the `resource` field of the OAuth
+    # protected-resource discovery document so MCP clients send tokens
+    # bound to this resource.
+    mcp_public_url: str = ""
+
     # Embedding dimension for the knowledge_chunks vector column. Locked at
     # migration time. 1536 covers OpenAI text-embedding-3-small (default) and
     # nomic-embed-text via Matryoshka padding/truncation.

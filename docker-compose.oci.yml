@@ -1,0 +1,54 @@
+name: securo
+
+# Override for self-hosted deploys on a single VM (e.g. Oracle Cloud
+# Always Free). Builds images locally instead of pulling from GHCR,
+# exposes the frontend directly on port 80 (HTTP), and brings up the
+# built-in MCP server on port 9000 for external clients like Claude.
+#
+# Usage:
+#   docker compose -f docker-compose.prod.yml -f docker-compose.oci.yml up -d --build
+
+services:
+  backend:
+    image: securo-backend:local
+    build:
+      context: ./backend
+    ports: !reset []
+
+  celery-worker:
+    image: securo-backend:local
+    build:
+      context: ./backend
+
+  celery-beat:
+    image: securo-backend:local
+    build:
+      context: ./backend
+
+  frontend:
+    image: securo-frontend:local
+    build:
+      context: ./frontend
+    ports: !override
+      - "80:80"
+
+  mcp-server:
+    image: securo-backend:local
+    build:
+      context: ./backend
+    command: uvicorn mcp_server.main:app --host 0.0.0.0 --port 8765
+    environment:
+      DATABASE_URL: postgresql+asyncpg://postgres:postgres@db:5432/securo
+      SECRET_KEY: ${SECRET_KEY:-dev-secret-change-in-production}
+      REDIS_URL: redis://redis:6379/0
+      AGENTS_MCP_JWT_SECRET: ${AGENTS_MCP_JWT_SECRET:-dev-mcp-secret-change-in-production}
+      AGENTS_MCP_AUTH_PROVIDER: ${AGENTS_MCP_AUTH_PROVIDER:-internal}
+      AGENTS_WORKOS_ISSUER: ${AGENTS_WORKOS_ISSUER:-}
+      AGENTS_WORKOS_JWKS_URL: ${AGENTS_WORKOS_JWKS_URL:-}
+      AGENTS_WORKOS_AUDIENCE: ${AGENTS_WORKOS_AUDIENCE:-}
+      AGENTS_MCP_PUBLIC_URL: ${AGENTS_MCP_PUBLIC_URL:-}
+    depends_on:
+      db: { condition: service_healthy }
+    ports:
+      - "9000:8765"
+    restart: unless-stopped
